@@ -32,6 +32,7 @@ struct MapNode {
 #endif
 
 static bool displayCards = true;
+static void (SokuLib::KeymapManager::*s_origKeymapManager_SetInputs)();
 static int (SokuLib::Title::*s_originalTitleOnProcess)();
 static int (SokuLib::Select::*s_originalSelectOnProcess)();
 static int (SokuLib::SelectClient::*s_originalSelectCLOnProcess)();
@@ -45,14 +46,9 @@ static int (SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_OnRender)();
 static void (*s_originalDrawGradiantBar)(float param1, float param2, float param3);
 static int (__stdcall *realSendTo)(SOCKET s, char *buf, int len, int flags, sockaddr *to, int tolen);
 static BOOL (__stdcall *realMoveFileA)(LPCSTR lpExistingFileName, LPCSTR lpNewFileName);
-static SokuLib::Select *(SokuLib::Select::*og_CSelect_Init_0041e55f)();
-static SokuLib::Select *(SokuLib::Select::*og_CSelect_Init_0041e263)();
-static SokuLib::Select *(SokuLib::Select::*og_CSelect_Init_0041e2c3)();
-static SokuLib::SelectServer *(SokuLib::SelectServer::*og_CSelectSV_Init)();
-static SokuLib::SelectClient *(SokuLib::SelectClient::*og_CSelectCL_Init)();
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_Destructor)(unsigned char param);
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*og_CProfileDeckEdit_Init)(int param_2, int param_3, SokuLib::Sprite *param_4);
-static std::random_device random;
+static std::mt19937 random;
 
 std::map<unsigned char, std::map<unsigned short, SokuLib::DrawUtils::Sprite>> cardsTextures;
 std::map<unsigned, std::vector<unsigned short>> characterSpellCards;
@@ -102,7 +98,6 @@ static bool deleteBoxDisplayed = false;
 static bool generated = false;
 static bool saveError = false;
 static bool side = false;
-static bool fontLoaded = false;
 static bool assetsLoaded = false;
 static bool profileSelectReady = false;
 static char nameBuffer[64];
@@ -441,10 +436,39 @@ static bool saveProfile(const std::string &path, const std::map<unsigned char, s
 	return true;
 }
 
+static void __fastcall KeymapManagerSetInputs(SokuLib::KeymapManager *This)
+{
+	(This->*s_origKeymapManager_SetInputs)();
+	if (SokuLib::sceneId != SokuLib::SCENE_SELECTSV && SokuLib::sceneId != SokuLib::SCENE_SELECTCL)
+		return;
+
+	auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
+	static bool a = true;
+
+	if (This != (SokuLib::KeymapManager *)0x8986A8)
+		return;
+	printf("%p %i %i %i %i\n", &scene, This->input.a, This->input.d, scene.leftSelectionStage, scene.rightSelectionStage);
+	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT) {
+		if (scene.leftSelectionStage != 1) {
+			a = true;
+			return;
+		}
+	} else if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER) {
+		if (scene.rightSelectionStage != 1) {
+			a = true;
+			return;
+		}
+	}
+	if (!This->input.a)
+		a = false;
+	This->input.d |= This->input.a && !a;
+	This->input.a = 0;
+	printf("         %i %i\n", This->input.a, This->input.d);
+}
+
 int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, int tolen)
 {
 	auto packet = reinterpret_cast<SokuLib::Packet *>(buf);
-	static bool a = false;
 
 	//if (SokuLib::sceneId != SokuLib::SCENE_SELECTCL && SokuLib::sceneId != SokuLib::SCENE_SELECTSV && SokuLib::sceneId != SokuLib::SCENE_SELECT)
 	//	return realSendTo(s, buf, len, flags, to, tolen);
@@ -467,25 +491,10 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 	if (packet->game.event.type != SokuLib::GAME_INPUT)
 		return realSendTo(s, buf, len, flags, to, tolen);
 	if (packet->game.event.input.sceneId == SokuLib::SCENEID_CHARACTER_SELECT) {
-		auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
-
-		if (scene.leftSelectionStage  != 1 && SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT) {
-			a = true;
-			return realSendTo(s, buf, len, flags, to, tolen);
-		}
-		if (scene.rightSelectionStage != 1 && SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER) {
-			a = true;
-			return realSendTo(s, buf, len, flags, to, tolen);
-		}
-		if (!packet->game.event.input.inputs[0].charSelect.Z)
-			a = false;
-
 		char *buffer = new char[len];
 
 		memcpy(buffer, buf, len);
 		packet = reinterpret_cast<SokuLib::Packet *>(buffer);
-		packet->game.event.input.inputs[0].charSelect.A |= packet->game.event.input.inputs[0].charSelect.Z && !a;
-		packet->game.event.input.inputs[0].charSelect.Z = false;
 		packet->game.event.input.inputs[0].charSelect.left = false;
 		packet->game.event.input.inputs[0].charSelect.right = false;
 
@@ -493,8 +502,7 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 
 		delete[] buffer;
 		return bytes;
-	} else
-		a = true;
+	}
 	return realSendTo(s, buf, len, flags, to, tolen);
 }
 
@@ -1895,6 +1903,7 @@ extern "C" __declspec(dllexport) bool Initialize(HMODULE hMyModule, HMODULE hPar
 	DWORD old;
 	FILE *_;
 
+	random.seed(time(nullptr));
 	GetModuleFileName(hMyModule, profilePath, 1024);
 	while (*profilePath && profilePath[strlen(profilePath) - 1] == '\\')
 		profilePath[strlen(profilePath) - 1] = 0;
@@ -1908,7 +1917,7 @@ extern "C" __declspec(dllexport) bool Initialize(HMODULE hMyModule, HMODULE hPar
 	freopen_s(&_, "CONOUT$", "w", stdout);
 	freopen_s(&_, "CONOUT$", "w", stderr);
 #endif
-	puts("Hey !");
+	puts("To infinity and beyond!");
 	loadSoku2Config();
 	::VirtualProtect((PVOID)RDATA_SECTION_OFFSET, RDATA_SECTION_SIZE, PAGE_EXECUTE_WRITECOPY, &old);
 	s_originalSelectCLOnProcess          = SokuLib::TamperDword(&SokuLib::VTable_SelectClient.onProcess, CSelectCL_OnProcess);
@@ -1926,11 +1935,12 @@ extern "C" __declspec(dllexport) bool Initialize(HMODULE hMyModule, HMODULE hPar
 	::VirtualProtect((PVOID)RDATA_SECTION_OFFSET, RDATA_SECTION_SIZE, old, &old);
 
 	::VirtualProtect((PVOID)TEXT_SECTION_OFFSET, TEXT_SECTION_SIZE, PAGE_EXECUTE_WRITECOPY, &old);
-	//Force deck icon to be hidden in character select
+	// Force deck icon to be hidden in character select
 	*(unsigned char *)0x4210e2 = 0xEB;
-	//Force deck icon to be hidden in deck construction
+	// Force deck icon to be hidden in deck construction
 	memset((void *)0x0044E4ED, 0x90, 35);
 	SokuLib::TamperNearJmpOpr(0x450230, CProfileDeckEdit_SwitchCurrentDeck);
+	s_origKeymapManager_SetInputs = SokuLib::union_cast<void (SokuLib::KeymapManager::*)()>(SokuLib::TamperNearJmpOpr(0x40A45D, KeymapManagerSetInputs));
 	s_originalDrawGradiantBar = reinterpret_cast<void (*)(float, float, float)>(SokuLib::TamperNearJmpOpr(0x44E4C8, drawGradiantBar));
 	s_originalInputMgrGet = SokuLib::union_cast<int (SokuLib::ObjectSelect::*)()>(SokuLib::TamperNearJmpOpr(0x4206B3, myGetInput));
 	og_CProfileDeckEdit_Init = SokuLib::union_cast<SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*)(int, int, SokuLib::Sprite *)>(
