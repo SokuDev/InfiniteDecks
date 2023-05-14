@@ -1,5 +1,16 @@
-# ModTemplate
-Template for new mods
+# InfiniteDecks
+Allows to
+- Create more than 4 decks per profile
+- Keep decks for Soku2 characters when disabling Soku2
+- Give a name to decks
+- Copy decks
+- Use a randomized deck
+- Use no deck
+- Create a deck with less than 20 cards, that will be filled to 20 cards at each game with random cards
+- Play outdoors as Remilia (in netplay, only works when hosting and if P2 doesn't play Remilia or has a parasol)
+
+The mod works even when your opponent doesn't use it.
+On their end, you will select the "random" deck.
 
 # Build
 Requires CMake, git and the VisualStudio compiler (MSVC).
@@ -18,8 +29,8 @@ drop the folder onto the console.
 
 Now let's download the repository and initialize it for the first time
 ```
-git clone https://github.com/SokuDev/ModTemplate
-cd ModTemplate
+git clone https://github.com/SokuDev/InfiniteDecks
+cd InfiniteDecks
 git submodule init
 git submodule update
 mkdir build
@@ -30,7 +41,7 @@ Note that if you want to build in Release, you should replace `-DCMAKE_BUILD_TYP
 
 ## Compiling
 Now, to build the mod, go to the build directory (if you did the previous step you already are)
-`cd C:\Users\PinkySmile\SokuProjects\ModTemplate\build` and invoke the compiler by running `nmake`.
+`cd C:\Users\PinkySmile\SokuProjects\InfiniteDecks\build` and invoke the compiler by running `nmake`.
 
-You should find the resulting ModTemplate.dll mod inside the build folder that can be to SWRSToys.ini.
-In my case, I would add this line to it `ModTemplate=C:/Users/PinkySmile/SokuProjects/ModTemplate/build/ModTemplate.dll`.
+You should find the resulting InfiniteDecks.dll mod inside the build folder that can be to SWRSToys.ini.
+In my case, I would add this line to it `InfiniteDecks=C:/Users/PinkySmile/SokuProjects/InfiniteDecks/build/InfiniteDecks.dll`.
