@@ -491,6 +491,16 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 	if (packet->game.event.type != SokuLib::GAME_INPUT)
 		return realSendTo(s, buf, len, flags, to, tolen);
 	if (packet->game.event.input.sceneId == SokuLib::SCENEID_CHARACTER_SELECT) {
+		auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
+
+		if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT) {
+			if (scene.leftSelectionStage != 1)
+				return realSendTo(s, buf, len, flags, to, tolen);
+		} else if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER) {
+			if (scene.rightSelectionStage != 1)
+				return realSendTo(s, buf, len, flags, to, tolen);
+		}
+
 		char *buffer = new char[len];
 
 		memcpy(buffer, buf, len);
