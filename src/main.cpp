@@ -49,6 +49,7 @@ static BOOL (__stdcall *realMoveFileA)(LPCSTR lpExistingFileName, LPCSTR lpNewFi
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_Destructor)(unsigned char param);
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*og_CProfileDeckEdit_Init)(int param_2, int param_3, SokuLib::Sprite *param_4);
 static std::mt19937 random;
+static unsigned myState = 0;
 
 std::map<unsigned char, std::map<unsigned short, SokuLib::DrawUtils::Sprite>> cardsTextures;
 std::map<unsigned, std::vector<unsigned short>> characterSpellCards;
@@ -438,32 +439,39 @@ static bool saveProfile(const std::string &path, const std::map<unsigned char, s
 
 static void __fastcall KeymapManagerSetInputs(SokuLib::KeymapManager *This)
 {
-	(This->*s_origKeymapManager_SetInputs)();
+	(This->*s_origKeymapManager_SetInputs)();/*
 	if (SokuLib::sceneId != SokuLib::SCENE_SELECTSV && SokuLib::sceneId != SokuLib::SCENE_SELECTCL)
 		return;
 
-	auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
 	static bool a = true;
+	unsigned state = myState;
 
 	if (This != (SokuLib::KeymapManager *)0x8986A8)
 		return;
-	printf("%p %i %i %i %i\n", &scene, This->input.a, This->input.d, scene.leftSelectionStage, scene.rightSelectionStage);
-	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT) {
-		if (scene.leftSelectionStage != 1) {
-			a = true;
-			return;
-		}
-	} else if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER) {
-		if (scene.rightSelectionStage != 1) {
-			a = true;
-			return;
-		}
+	printf("%i %i %i\n", This->input.a, This->input.d, myState);
+	switch (myState) {
+	case 0:
+		if (This->input.d == 1)
+			myState = 2;
+		else if (This->input.a == 1)
+			myState = 1;
+		break;
+	case 1:
+	case 2:
+		if (This->input.b == 1)
+			myState = 0;
+		break;
+	}
+	if (state != 1) {
+		a = true;
+		return;
 	}
 	if (!This->input.a)
 		a = false;
 	This->input.d |= This->input.a && !a;
 	This->input.a = 0;
-	printf("         %i %i\n", This->input.a, This->input.d);
+	if (This->input.d == 1)
+		myState = 2;*/
 }
 
 int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, int tolen)
@@ -491,15 +499,8 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 	if (packet->game.event.type != SokuLib::GAME_INPUT)
 		return realSendTo(s, buf, len, flags, to, tolen);
 	if (packet->game.event.input.sceneId == SokuLib::SCENEID_CHARACTER_SELECT) {
-		auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
-
-		if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT) {
-			if (scene.leftSelectionStage != 1)
-				return realSendTo(s, buf, len, flags, to, tolen);
-		} else if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER) {
-			if (scene.rightSelectionStage != 1)
-				return realSendTo(s, buf, len, flags, to, tolen);
-		}
+		if (myState != 1)
+			return realSendTo(s, buf, len, flags, to, tolen);
 
 		char *buffer = new char[len];
 
@@ -1170,10 +1171,11 @@ int __fastcall myGetInput(SokuLib::ObjectSelect *This)
 	auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
 	auto &battle = SokuLib::getBattleMgr();
 
-	if (
+	/*if (
 		(SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER && This == &scene.leftSelect) ||
 		(SokuLib::mainMode != SokuLib::BATTLE_MODE_VSCLIENT && This == &scene.rightSelect)
-	)
+	)*/
+	if (SokuLib::sceneId == SokuLib::SCENE_SELECT)
 		This->deck = 0;
 	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER)
 		return ret;
