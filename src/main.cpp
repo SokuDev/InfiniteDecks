@@ -478,8 +478,8 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 {
 	auto packet = reinterpret_cast<SokuLib::Packet *>(buf);
 
-	//if (SokuLib::sceneId != SokuLib::SCENE_SELECTCL && SokuLib::sceneId != SokuLib::SCENE_SELECTSV && SokuLib::sceneId != SokuLib::SCENE_SELECT)
-	//	return realSendTo(s, buf, len, flags, to, tolen);
+	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSWATCH)
+		return realSendTo(s, buf, len, flags, to, tolen);
 	if (packet->type != SokuLib::CLIENT_GAME && packet->type != SokuLib::HOST_GAME)
 		return realSendTo(s, buf, len, flags, to, tolen);
 
