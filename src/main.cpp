@@ -45,6 +45,7 @@ static int (SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_OnProcess)();
 static int (SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_OnRender)();
 static void (*s_originalDrawGradiantBar)(float param1, float param2, float param3);
 static int (__stdcall *realSendTo)(SOCKET s, char *buf, int len, int flags, sockaddr *to, int tolen);
+static int (__stdcall *realRecvFrom)(SOCKET s, char *buf, int len, int flags, sockaddr *to, int *tolen);
 static BOOL (__stdcall *realMoveFileA)(LPCSTR lpExistingFileName, LPCSTR lpNewFileName);
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_Destructor)(unsigned char param);
 static SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*og_CProfileDeckEdit_Init)(int param_2, int param_3, SokuLib::Sprite *param_4);
@@ -97,6 +98,7 @@ static bool copyBoxDisplayed = false;
 static bool renameBoxDisplayed = false;
 static bool deleteBoxDisplayed = false;
 static bool generated = false;
+static SokuLib::Character generatedC = SokuLib::CHARACTER_RANDOM;
 static bool saveError = false;
 static bool side = false;
 static bool assetsLoaded = false;
@@ -175,9 +177,9 @@ int *CTextureManager_LoadTextureFromResource(int *ret, HMODULE hSrcModule, LPCTS
 		info.Width,
 		info.Height,
 		info.MipLevels,
-		D3DUSAGE_RENDERTARGET,
+		0,
 		info.Format,
-		D3DPOOL_DEFAULT,
+		D3DPOOL_MANAGED,
 		D3DX_DEFAULT,
 		D3DX_DEFAULT,
 		0,
@@ -254,6 +256,8 @@ void generateFakeDeck(SokuLib::Character chr, SokuLib::Character lastChr, unsign
 {
 	std::array<unsigned short, 20> randomDeck{21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21};
 
+	printf("Generating deck for %i (%i)\n", chr, lastChr);
+	generatedC = chr;
 	if (lastChr == SokuLib::CHARACTER_RANDOM) {
 		if (bases.empty())
 			return generateFakeDeck(chr, chr, &defaultDecks[chr], buffer);
@@ -369,17 +373,6 @@ void loadSoku2Config()
 	}
 }
 
-void generateFakeDecks()
-{
-	if (generated)
-		return;
-	generated = true;
-	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER)
-		generateFakeDeck(SokuLib::leftChar,  lastLeft,  upSelectedDeck,  loadedDecks[0][SokuLib::leftChar], fakeLeftDeck);
-	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSCLIENT)
-		generateFakeDeck(SokuLib::rightChar, lastRight, downSelectedDeck, loadedDecks[SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER][SokuLib::rightChar], fakeRightDeck);
-}
-
 void fillSokuDeck(SokuLib::Deque<unsigned short> &sokuDeck, const std::array<unsigned short, 20> &deck)
 {
 	sokuDeck.clear();
@@ -392,6 +385,32 @@ void fillSokuDeck(SokuLib::Deque<unsigned short> &sokuDeck, const std::unique_pt
 	if (deck)
 		return fillSokuDeck(sokuDeck, *deck);
 	sokuDeck.clear();
+}
+
+void generateFakeDecks(SokuLib::Character c)
+{
+	puts("generateFakeDecks(SokuLib::Character c)");
+	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER) {
+		printf("Main mode %i != %i\n", SokuLib::mainMode, SokuLib::BATTLE_MODE_VSSERVER);
+		return;
+	}
+	if (generated && generatedC == c) {
+		printf("%i && %i == %i, %i\n", generated, generatedC, c, SokuLib::rightChar);
+		return;
+	}
+	generated = true;
+	generateFakeDeck(c, lastRight, downSelectedDeck, loadedDecks[0][c], fakeRightDeck);
+}
+
+void generateFakeDecks()
+{
+	if (generated)
+		return;
+	generated = true;
+	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER)
+		generateFakeDeck(SokuLib::leftChar,  lastLeft,  upSelectedDeck,  loadedDecks[0][SokuLib::leftChar], fakeLeftDeck);
+	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSCLIENT)
+		generateFakeDeck(SokuLib::rightChar, lastRight, downSelectedDeck, loadedDecks[SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER][SokuLib::rightChar], fakeRightDeck);
 }
 
 static bool saveProfile(const std::string &path, const std::map<unsigned char, std::vector<Deck>> &profile)
@@ -474,6 +493,22 @@ static void __fastcall KeymapManagerSetInputs(SokuLib::KeymapManager *This)
 		myState = 2;*/
 }
 
+int __stdcall myRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *to, int *tolen)
+{
+	int ret = realRecvFrom(s, buf, len, flags, to, tolen);
+	auto packet = reinterpret_cast<SokuLib::Packet *>(buf);
+
+	if (SokuLib::mainMode != SokuLib::BATTLE_MODE_VSSERVER)
+		return ret;
+	if (packet->type != SokuLib::CLIENT_GAME && packet->type != SokuLib::HOST_GAME)
+		return ret;
+	if (packet->game.event.type == SokuLib::GAME_MATCH) {
+		generateFakeDecks(static_cast<SokuLib::Character>(packet->game.event.match.client().character));
+		fillSokuDeck(SokuLib::rightPlayerInfo.effectiveDeck, fakeRightDeck);
+	}
+	return ret;
+}
+
 int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, int tolen)
 {
 	auto packet = reinterpret_cast<SokuLib::Packet *>(buf);
@@ -486,15 +521,16 @@ int __stdcall mySendTo(SOCKET s, char *buf, int len, int flags, sockaddr *to, in
 	bool needDelete = false;
 
 	if (packet->game.event.type == SokuLib::GAME_MATCH) {
-		generateFakeDecks();
-
 		auto &fake = (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT ? fakeLeftDeck : fakeRightDeck);
 		auto &replace = (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSCLIENT ? packet->game.event.match.host : packet->game.event.match.client());
 
+		//SokuLib::displayPacketContent(std::cout, *packet);
+		generateFakeDecks();
 		if (fake)
 			memcpy(replace.cards, fake->data(), fake->size() * sizeof(*fake->data()));
 		else //We just send an invalid deck over if we want no decks
 			memset(replace.cards, 0, 40);
+		//SokuLib::displayPacketContent(std::cout, *packet);
 	}
 	if (packet->game.event.type != SokuLib::GAME_INPUT)
 		return realSendTo(s, buf, len, flags, to, tolen);
@@ -1064,6 +1100,7 @@ static int selectProcessCommon(int v)
 	} else {
 		counter = 0;
 		generated = false;
+		generatedC = SokuLib::CHARACTER_RANDOM;
 	}
 
 	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER && scene.rightSelectionStage == 1) {
@@ -1943,6 +1980,7 @@ extern "C" __declspec(dllexport) bool Initialize(HMODULE hMyModule, HMODULE hPar
 	s_originalCProfileDeckEdit_OnRender  = SokuLib::TamperDword(&SokuLib::VTable_ProfileDeckEdit.onRender, CProfileDeckEdit_OnRender);
 	s_originalCProfileDeckEdit_Destructor= SokuLib::TamperDword(&SokuLib::VTable_ProfileDeckEdit.onDestruct, CProfileDeckEdit_Destructor);
 	realSendTo = SokuLib::TamperDword(&SokuLib::DLL::ws2_32.sendto, &mySendTo);
+	realRecvFrom = SokuLib::TamperDword(&SokuLib::DLL::ws2_32.recvfrom, &myRecvFrom);
 	realMoveFileA = SokuLib::TamperDword(&SokuLib::DLL::kernel32.MoveFileA, &myMoveFileA);
 	::VirtualProtect((PVOID)RDATA_SECTION_OFFSET, RDATA_SECTION_SIZE, old, &old);
 

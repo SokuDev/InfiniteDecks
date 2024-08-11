@@ -38,4 +38,5 @@ target_link_libraries(
         shlwapi
         d3d9
         d3dx9
+        ws2_32
 )
