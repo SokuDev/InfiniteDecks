@@ -40,7 +40,7 @@ static int (SokuLib::SelectServer::*s_originalSelectSVOnProcess)();
 static int (SokuLib::Select::*s_originalSelectOnRender)();
 static int (SokuLib::SelectClient::*s_originalSelectCLOnRender)();
 static int (SokuLib::SelectServer::*s_originalSelectSVOnRender)();
-static int (SokuLib::ObjectSelect::*s_originalInputMgrGet)();
+static int (SokuLib::InputHandler::*s_originalInputMgrGet)();
 static int (SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_OnProcess)();
 static int (SokuLib::ProfileDeckEdit::*s_originalCProfileDeckEdit_OnRender)();
 static void (*s_originalDrawGradiantBar)(float param1, float param2, float param3);
@@ -1123,10 +1123,6 @@ static int selectProcessCommon(int v)
 	static int right = 0;
 	auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
 
-	if ((scene.leftSelect.keys && scene.leftSelect.keys->spellcard == 1) || (scene.rightSelect.keys && scene.rightSelect.keys->spellcard == 1)) {
-		displayCards = !displayCards;
-		SokuLib::playSEWaveBuffer(0x27);
-	}
 	if (scene.leftSelectionStage == 3 && scene.rightSelectionStage == 3) {
 		if (counter < 60)
 			counter++;
@@ -1216,13 +1212,13 @@ int __fastcall CSelect_OnProcess(SokuLib::Select *This) {
 	return selectProcessCommon((This->*s_originalSelectOnProcess)());
 }
 
-static void handleInput(const SokuLib::KeyInput &inputs, int index)
+static void handleInput(int input, int index)
 {
 	bool isRight = index == 1;
 	auto &selectedDeck = (isRight ? downSelectedDeck : upSelectedDeck);
 	auto &decks = loadedDecks[index][isRight ? SokuLib::rightChar : SokuLib::leftChar];
 
-	if (inputs.horizontalAxis < 0) {
+	if (input < 0) {
 		if (selectedDeck == 0)
 			selectedDeck = decks.size() + 3 - decks.empty();
 		else
@@ -1235,7 +1231,7 @@ static void handleInput(const SokuLib::KeyInput &inputs, int index)
 	}
 }
 
-int __fastcall myGetInput(SokuLib::ObjectSelect *This)
+int __fastcall myGetInput(SokuLib::InputHandler *This)
 {
 	int ret = (This->*s_originalInputMgrGet)();
 	auto &scene = SokuLib::currentScene->to<SokuLib::Select>();
@@ -1246,16 +1242,16 @@ int __fastcall myGetInput(SokuLib::ObjectSelect *This)
 		(SokuLib::mainMode != SokuLib::BATTLE_MODE_VSCLIENT && This == &scene.rightSelect)
 	)*/
 	if (SokuLib::sceneId == SokuLib::SCENE_SELECT)
-		This->deck = 0;
+		This->pos = 0;
 	if (SokuLib::mainMode == SokuLib::BATTLE_MODE_VSSERVER)
 		return ret;
 	if (ret) {
-		int a = abs(This->keys->horizontalAxis);
+		int a = abs(*This->axis);
 
 		if (a != 1 && (a < 36 || a % 6 != 0))
 			return ret;
 		SokuLib::playSEWaveBuffer(0x27);
-		handleInput(*This->keys, This != &scene.leftSelect);
+		handleInput(*This->axis, This != &scene.leftDeckInput);
 		return 0;
 	}
 	return ret;
@@ -2025,7 +2021,7 @@ extern "C" __declspec(dllexport) bool Initialize(HMODULE hMyModule, HMODULE hPar
 	SokuLib::TamperNearJmpOpr(0x450230, CProfileDeckEdit_SwitchCurrentDeck);
 	s_origKeymapManager_SetInputs = SokuLib::union_cast<void (SokuLib::KeymapManager::*)()>(SokuLib::TamperNearJmpOpr(0x40A45D, KeymapManagerSetInputs));
 	s_originalDrawGradiantBar = reinterpret_cast<void (*)(float, float, float)>(SokuLib::TamperNearJmpOpr(0x44E4C8, drawGradiantBar));
-	s_originalInputMgrGet = SokuLib::union_cast<int (SokuLib::ObjectSelect::*)()>(SokuLib::TamperNearJmpOpr(0x4206B3, myGetInput));
+	s_originalInputMgrGet = SokuLib::union_cast<int (SokuLib::InputHandler::*)()>(SokuLib::TamperNearJmpOpr(0x4206B3, myGetInput));
 	og_CProfileDeckEdit_Init = SokuLib::union_cast<SokuLib::ProfileDeckEdit *(SokuLib::ProfileDeckEdit::*)(int, int, SokuLib::Sprite *)>(
 		SokuLib::TamperNearJmpOpr(0x0044d529, CProfileDeckEdit_Init)
 	);
