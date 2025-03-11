@@ -786,6 +786,39 @@ static bool loadProfileFile(const std::string &path, std::ifstream &stream, std:
 			map[index].push_back(deck);
 		}
 	}
+
+	std::map<unsigned, std::vector<unsigned>> duplicateDecks;
+	size_t duplicateCount = 0;
+
+	for (auto &[key, array] : map) {
+		std::vector<std::string> foundNames;
+		std::vector<unsigned> duplicates;
+
+		for (size_t i = 0; i < array.size(); i++) {
+			if (array[i].name == "Create new deck" || std::find(foundNames.begin(), foundNames.end(), array[i].name) != foundNames.end())
+				duplicates.push_back(i);
+			else
+				foundNames.push_back(array[i].name);
+		}
+		if (!duplicates.empty())
+			duplicateDecks[key] = duplicates;
+		duplicateCount += duplicates.size();
+	}
+	if (!duplicateDecks.empty() && MessageBoxA(
+		nullptr,
+		(std::to_string(duplicateCount) + " duplicate decks found in " + path + ". Do you want to delete them?").c_str(),
+		"InfiniteDecks duplication error",
+		MB_ICONQUESTION | MB_YESNO
+	) == IDYES) {
+		for (auto &[key, array] : duplicateDecks) {
+			std::sort(array.begin(), array.end(), [](unsigned a, unsigned b){
+				return a > b;
+			});
+			for (unsigned i : array)
+				map[key].erase(map[key].begin() + i);
+		}
+		saveProfile(path, map);
+	}
 	if (index == 2)
 		for (auto &elem : map)
 			elem.second.push_back({"Create new deck", {21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21}});
@@ -1527,7 +1560,7 @@ void copyBoxUpdate(SokuLib::KeyManager *keys)
 
 static void loadDefaultDecks()
 {
-	char buffer[] = "data/csv/000000000000/deck.csv";
+	char buffer[] = "data/csv/000000000000000000000000000000000000000000000000/deck.csv";
 
 	for (auto [id, name] : names) {
 		sprintf(buffer, "data/csv/%s/deck.csv", name.c_str());
@@ -1572,7 +1605,7 @@ static void loadDefaultDecks()
 
 static void loadAllExistingCards()
 {
-	char buffer[] = "data/csv/000000000000/spellcard.csv";
+	char buffer[] = "data/csv/000000000000000000000000000000000000000000000000/spellcard.csv";
 
 	for (auto [id, name] : names) {
 		sprintf(buffer, "data/csv/%s/spellcard.csv", name.c_str());
@@ -1596,7 +1629,7 @@ static void loadAllExistingCards()
 						"In file " + buffer + ": Cannot parse cell #1 at line #" + std::to_string(i) +
 						" \"" + str + "\": " + e.what()
 					).c_str(),
-					"Loading default deck failed",
+					"Loading cards failed",
 					MB_ICONERROR
 				);
 				abort();
